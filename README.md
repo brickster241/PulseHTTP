@@ -52,11 +52,17 @@ the precise status code the RFC assigns it, because `401 vs 403` and `404 vs 405
 - **`middleware`** — structured JSON access logs, `X-Request-ID` correlation, panic
   recovery, bearer auth, lazy per-client token buckets (no background refill goroutine).
 - **`cache`** — LRU + TTL response cache with SHA-256 ETags: fresh hits skip the handler,
-  `If-None-Match` earns a bodyless `304`, mutating verbs invalidate their path.
+  `If-None-Match` earns a bodyless `304`, mutating verbs invalidate their path, and
+  `Cache-Control` is honored both ways (`no-store`/`max-age=N` on responses,
+  `no-cache` revalidation on requests).
 - **`metrics`** — status counters + latency histogram with interpolated p50/p90/p99,
   served as JSON at `/metrics`.
 - **`proxy`** — upstream pool with active TCP health checks and passive failure
-  detection, round-robin or least-connections, bounded relay.
+  detection, round-robin or least-connections, **keep-alive connection pooling with
+  stale-connection retry** (2.7× the relay throughput of connection-per-request),
+  bounded relay.
+- **TLS** — pass `-tls-cert`/`-tls-key` and the identical HTTP/1.1 engine serves
+  https via a `tls.NewListener` wrap; transport swaps, protocol layer untouched.
 
 ## Measured performance
 
@@ -69,7 +75,7 @@ every run**:
 | Routed `GET /api/users/:id`, c=100, 200K reqs | 165,280 req/s | 0.42 ms | 3.30 ms | 7.44 ms |
 | CPU-bound route (20K SHA-256 rounds), uncached, c=50 | 8,198 req/s | 4.18 ms | 36.25 ms | 47.18 ms |
 | Same route, LRU+ETag cache | **159,886 req/s (19.5×)** | 0.26 ms | 1.24 ms | 1.96 ms |
-| Through the reverse-proxy balancer, 2 upstreams, c=100, 100K reqs | 29,086 req/s | 3.27 ms | 5.01 ms | 68.02 ms |
+| Through the reverse-proxy balancer, 2 upstreams, c=100, 200K reqs | **78,341 req/s** (pooled; 2.7× over conn-per-request) | 0.97 ms | 5.00 ms | 9.67 ms |
 | Rate limiter: burst 200 @ 100 rps, 2,000 blasted | — | — | — | **202×200 / 1,798×429** |
 
 Reproduce with:
@@ -119,10 +125,14 @@ in-flight completion, LRU eviction order, TTL expiry, ETag revalidation, per-cli
 bucket isolation, round-robin distribution, upstream-death failover, and
 all-upstreams-down 503.
 
-## Honest limitations
+## Scope decisions
 
-- HTTP/1.1 only (no TLS, no HTTP/2, no websockets); bodies are read fully into
-  memory (bounded), not streamed.
-- Proxy mode opens a fresh upstream connection per request (`Connection: close`
-  upstream) — correctness first; upstream keep-alive pooling is the obvious next win.
-- The cache trusts its own invalidation only (no `Cache-Control` parsing yet).
+- **HTTP/1.1 by design.** The project's goal is owning one protocol completely —
+  parsing, framing, and every status-code boundary — on a raw socket. HTTP/2's
+  binary framing/HPACK is a different protocol, deliberately out of scope rather
+  than half-implemented. TLS is supported (`-tls-cert`/`-tls-key`).
+- **Buffered bodies, not streamed — deliberately.** Responses materialize in
+  memory (bounded by limits) because full-response buffering is what lets the
+  cache, ETag computation, metrics, and Content-Length framing observe complete
+  exchanges. Streaming is a different design point with different middleware
+  semantics, not a missing feature.
