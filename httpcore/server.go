@@ -3,6 +3,7 @@ package httpcore
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -23,6 +24,10 @@ type Config struct {
 	WriteTimeout time.Duration
 	MaxRequestsPerConn int // 0 = unlimited
 	ShutdownGrace      time.Duration
+	// TLS, when set, wraps the raw TCP listener so the same HTTP/1.1 engine
+	// serves https. The protocol layer above is unchanged — TLS is a
+	// transport concern and stays one.
+	TLS *tls.Config
 }
 
 func (c Config) withDefaults() Config {
@@ -85,6 +90,9 @@ func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", s.cfg.Addr, err)
+	}
+	if s.cfg.TLS != nil {
+		ln = tls.NewListener(ln, s.cfg.TLS)
 	}
 	s.listener = ln
 	s.addr.Store(ln.Addr().String())

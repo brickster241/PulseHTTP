@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -36,8 +37,20 @@ func main() {
 		cacheCap  = flag.Int("cache", 1024, "response cache capacity in entries (0 disables)")
 		cacheTTL  = flag.Duration("cache-ttl", 30*time.Second, "response cache TTL")
 		quietLogs = flag.Bool("quiet", false, "suppress access logs (benchmarking)")
+		tlsCert   = flag.String("tls-cert", "", "TLS certificate file — serves https on -addr")
+		tlsKey    = flag.String("tls-key", "", "TLS private key file")
 	)
 	flag.Parse()
+
+	var tlsCfg *tls.Config
+	if *tlsCert != "" || *tlsKey != "" {
+		cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "loading TLS keypair:", err)
+			os.Exit(2)
+		}
+		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	}
 
 	reg := metrics.NewRegistry()
 
@@ -98,6 +111,7 @@ func main() {
 	srv := httpcore.NewServer(httpcore.Config{
 		Addr:    *addr,
 		Handler: middleware.Chain(handler, mws...),
+		TLS:     tlsCfg,
 	})
 
 	go func() {
