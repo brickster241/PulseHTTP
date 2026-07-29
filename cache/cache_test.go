@@ -135,3 +135,51 @@ func TestWriteInvalidatesPath(t *testing.T) {
 		t.Fatalf("calls = %d, want 3", *calls)
 	}
 }
+
+func TestNoStoreResponseNeverCached(t *testing.T) {
+	c := New(8, time.Minute)
+	calls := 0
+	h := func(req *httpcore.Request, w *httpcore.ResponseWriter) {
+		calls++
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteString("secret")
+	}
+	wrapped := middleware.Chain(h, c.Middleware())
+	wrapped(makeReq("GET", "/tok"), httpcore.NewResponseWriter())
+	wrapped(makeReq("GET", "/tok"), httpcore.NewResponseWriter())
+	if calls != 2 {
+		t.Fatalf("no-store response was served from cache (calls=%d)", calls)
+	}
+}
+
+func TestMaxAgeOverridesDefaultTTL(t *testing.T) {
+	c := New(8, time.Hour) // default TTL is long...
+	calls := 0
+	h := func(req *httpcore.Request, w *httpcore.ResponseWriter) {
+		calls++
+		w.Header().Set("Cache-Control", "max-age=0") // ...but the response opts out of freshness
+		w.WriteString("v")
+	}
+	wrapped := middleware.Chain(h, c.Middleware())
+	wrapped(makeReq("GET", "/short"), httpcore.NewResponseWriter())
+	time.Sleep(5 * time.Millisecond)
+	wrapped(makeReq("GET", "/short"), httpcore.NewResponseWriter())
+	if calls != 2 {
+		t.Fatalf("max-age=0 entry survived past its freshness (calls=%d)", calls)
+	}
+}
+
+func TestRequestNoCacheBypassesStore(t *testing.T) {
+	c := New(8, time.Minute)
+	h, calls := countingHandler()
+	wrapped := middleware.Chain(h, c.Middleware())
+	wrapped(makeReq("GET", "/page"), httpcore.NewResponseWriter())
+
+	req := makeReq("GET", "/page")
+	req.Headers.Set("Cache-Control", "no-cache")
+	w := httpcore.NewResponseWriter()
+	wrapped(req, w)
+	if *calls != 2 {
+		t.Fatalf("no-cache request served from cache (calls=%d)", *calls)
+	}
+}

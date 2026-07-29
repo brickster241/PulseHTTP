@@ -7,6 +7,8 @@ import (
 	"container/list"
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -107,15 +109,23 @@ func (c *Cache) Middleware() middleware.Middleware {
 				return
 			}
 
+			// Cache-Control: no-cache on the REQUEST forces revalidation —
+			// skip the stored copy and let the handler produce a fresh one.
+			bypass := req.Headers.ContainsToken("Cache-Control", "no-cache")
+
 			now := time.Now()
-			c.mu.Lock()
-			e, ok := c.get(key, now)
-			if ok {
-				c.hits++
-			} else {
-				c.misses++
+			var e *entry
+			ok := false
+			if !bypass {
+				c.mu.Lock()
+				e, ok = c.get(key, now)
+				if ok {
+					c.hits++
+				} else {
+					c.misses++
+				}
+				c.mu.Unlock()
 			}
-			c.mu.Unlock()
 
 			if ok {
 				w.Header().Set("ETag", e.etag)
@@ -136,6 +146,19 @@ func (c *Cache) Middleware() middleware.Middleware {
 
 			next(req, w)
 
+			// Cache-Control on the RESPONSE governs storage: no-store is an
+			// absolute opt-out, max-age=N overrides the default TTL.
+			respCC := w.Header().Get("Cache-Control")
+			if strings.Contains(respCC, "no-store") {
+				return
+			}
+			ttl := c.ttl
+			if idx := strings.Index(respCC, "max-age="); idx != -1 {
+				if secs, err := strconv.Atoi(strings.TrimRight(respCC[idx+8:], " ,;")); err == nil && secs >= 0 {
+					ttl = time.Duration(secs) * time.Second
+				}
+			}
+
 			if w.Status() == httpcore.StatusOK {
 				body := append([]byte(nil), w.Body()...)
 				etag := etagFor(body)
@@ -145,7 +168,7 @@ func (c *Cache) Middleware() middleware.Middleware {
 					body:        body,
 					contentType: w.Header().Get("Content-Type"),
 					etag:        etag,
-					expires:     now.Add(c.ttl),
+					expires:     now.Add(ttl),
 				})
 				c.mu.Unlock()
 				w.Header().Set("ETag", etag)
