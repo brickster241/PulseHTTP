@@ -17,11 +17,13 @@ import (
 	"github.com/brickster241/PulseHTTP/httpcore"
 )
 
-// Upstream is one backend address with liveness and load accounting.
+// Upstream is one backend address with liveness and load accounting, plus a
+// bounded pool of idle keep-alive connections for reuse across requests.
 type Upstream struct {
 	Addr    string
 	healthy atomic.Bool
 	active  atomic.Int64 // in-flight requests, for least-connections
+	conns   chan net.Conn
 }
 
 func (u *Upstream) Healthy() bool { return u.healthy.Load() }
@@ -42,6 +44,7 @@ type Config struct {
 	HealthInterval time.Duration
 	MaxAttempts    int   // failover tries per request
 	MaxBodyBytes   int64 // cap on relayed upstream bodies
+	PoolSize       int   // idle keep-alive connections kept per upstream
 }
 
 func (c Config) withDefaults() Config {
@@ -63,6 +66,9 @@ func (c Config) withDefaults() Config {
 	if c.MaxBodyBytes == 0 {
 		c.MaxBodyBytes = 8 << 20
 	}
+	if c.PoolSize == 0 {
+		c.PoolSize = 32
+	}
 	return c
 }
 
@@ -77,7 +83,7 @@ func NewPool(cfg Config) *Pool {
 	cfg = cfg.withDefaults()
 	p := &Pool{cfg: cfg, stop: make(chan struct{})}
 	for _, addr := range cfg.Upstreams {
-		u := &Upstream{Addr: addr}
+		u := &Upstream{Addr: addr, conns: make(chan net.Conn, cfg.PoolSize)}
 		u.healthy.Store(true) // optimistic until the first check says otherwise
 		p.ups = append(p.ups, u)
 	}
@@ -85,8 +91,43 @@ func NewPool(cfg Config) *Pool {
 	return p
 }
 
-// Stop terminates health checking.
-func (p *Pool) Stop() { close(p.stop) }
+// Stop terminates health checking and closes pooled connections.
+func (p *Pool) Stop() {
+	close(p.stop)
+	for _, u := range p.ups {
+		for {
+			select {
+			case c := <-u.conns:
+				c.Close()
+			default:
+				goto next
+			}
+		}
+	next:
+	}
+}
+
+// getConn returns a pooled keep-alive connection when one is idle, else
+// dials fresh. reused tells the caller whether a stale-connection retry is
+// warranted on failure.
+func (p *Pool) getConn(u *Upstream) (conn net.Conn, reused bool, err error) {
+	select {
+	case c := <-u.conns:
+		return c, true, nil
+	default:
+	}
+	c, err := net.DialTimeout("tcp", u.Addr, p.cfg.DialTimeout)
+	return c, false, err
+}
+
+// putConn parks a healthy connection for reuse; overflow closes it.
+func (p *Pool) putConn(u *Upstream, conn net.Conn) {
+	select {
+	case u.conns <- conn:
+	default:
+		conn.Close()
+	}
+}
 
 // Upstreams exposes the pool for status pages.
 func (p *Pool) Upstreams() []*Upstream { return p.ups }
@@ -181,13 +222,40 @@ func (p *Pool) Handler() httpcore.Handler {
 	}
 }
 
-// relay performs one upstream exchange.
+// relay performs one upstream exchange through the keep-alive pool. A pooled
+// connection may have gone stale since it was parked (the upstream closed it,
+// or bytes died in transit) — that failure mode gets ONE retry on a fresh
+// dial before counting as an upstream failure.
 func (p *Pool) relay(u *Upstream, req *httpcore.Request, w *httpcore.ResponseWriter) error {
-	conn, err := net.DialTimeout("tcp", u.Addr, p.cfg.DialTimeout)
+	conn, reused, err := p.getConn(u)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", u.Addr, err)
 	}
-	defer conn.Close()
+	err = p.relayConn(conn, u, req, w)
+	if err != nil && reused {
+		// Stale pooled connection: dial fresh and retry exactly once.
+		conn, dialErr := net.DialTimeout("tcp", u.Addr, p.cfg.DialTimeout)
+		if dialErr != nil {
+			return fmt.Errorf("dial %s after stale pooled conn: %w", u.Addr, dialErr)
+		}
+		return p.relayConn(conn, u, req, w)
+	}
+	return err
+}
+
+// relayConn performs one exchange on a specific connection. On success with
+// deterministic framing (Content-Length), the connection is parked for reuse;
+// every other outcome closes it.
+func (p *Pool) relayConn(conn net.Conn, u *Upstream, req *httpcore.Request, w *httpcore.ResponseWriter) error {
+	healthyReuse := false
+	defer func() {
+		if healthyReuse {
+			conn.SetDeadline(time.Time{})
+			p.putConn(u, conn)
+		} else {
+			conn.Close()
+		}
+	}()
 	conn.SetDeadline(time.Now().Add(p.cfg.ResponseTimeout))
 
 	bw := bufio.NewWriter(conn)
@@ -210,7 +278,7 @@ func (p *Pool) relay(u *Upstream, req *httpcore.Request, w *httpcore.ResponseWri
 		bw.WriteString("X-Forwarded-For: " + host + "\r\n")
 	}
 	bw.WriteString("Content-Length: " + strconv.Itoa(len(req.Body)) + "\r\n")
-	bw.WriteString("Connection: close\r\n\r\n")
+	bw.WriteString("Connection: keep-alive\r\n\r\n")
 	bw.Write(req.Body)
 	if err := bw.Flush(); err != nil {
 		return fmt.Errorf("write to %s: %w", u.Addr, err)
@@ -265,7 +333,11 @@ func (p *Pool) relay(u *Upstream, req *httpcore.Request, w *httpcore.ResponseWri
 		if _, err := io.ReadFull(br, body); err != nil {
 			return fmt.Errorf("read body from %s: %w", u.Addr, err)
 		}
+		// Deterministic framing and a complete read: safe to reuse.
+		healthyReuse = true
 	} else {
+		// No Content-Length: the only framing is EOF, so this connection
+		// cannot be reused.
 		body, err = io.ReadAll(io.LimitReader(br, p.cfg.MaxBodyBytes+1))
 		if err != nil {
 			return fmt.Errorf("read body from %s: %w", u.Addr, err)

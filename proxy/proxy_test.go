@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -172,5 +173,44 @@ func TestXForwardedForAppended(t *testing.T) {
 	}
 	if gotXFF == "" {
 		t.Fatal("proxy must add X-Forwarded-For")
+	}
+}
+
+// TestKeepAliveConnectionPooling: sequential requests through the balancer
+// must ride the SAME upstream connection — the upstream should observe one
+// client address, not one per request.
+func TestKeepAliveConnectionPooling(t *testing.T) {
+	var mu sync.Mutex
+	remotes := map[string]bool{}
+	srv := httpcore.NewServer(httpcore.Config{
+		Addr: "127.0.0.1:0",
+		Handler: func(req *httpcore.Request, w *httpcore.ResponseWriter) {
+			mu.Lock()
+			remotes[req.RemoteAddr] = true
+			mu.Unlock()
+			w.WriteString("pooled")
+		},
+	})
+	go srv.ListenAndServe()
+	<-srv.Ready()
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+	}()
+
+	pool := NewPool(Config{Upstreams: []string{srv.Addr()}})
+	defer pool.Stop()
+	front := frontend(t, pool)
+
+	for i := 0; i < 6; i++ {
+		if status, _, _ := get(t, front); status != 200 {
+			t.Fatalf("request %d: status %d", i, status)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(remotes) != 1 {
+		t.Fatalf("upstream saw %d distinct connections, want 1 (pooling broken): %v", len(remotes), remotes)
 	}
 }
