@@ -33,16 +33,7 @@ the precise status code the RFC assigns it, because `401 vs 403` and `404 vs 405
 
 ## Architecture
 
-```
-                 ┌────────────────────────── pulsehttp (server mode) ─────────────────────────┐
- client ── TCP ──┤ httpcore: accept → parse (bounded) → [metrics → logs → request-id →        │
-                 │ recover → rate-limit → auth → cache] → router → handler → serialize        │
-                 └──────────────────────────────────────────────────────────────────────────────┘
-                 ┌────────────── pulsehttp (proxy mode) ──────────────┐
- client ── TCP ──┤ httpcore → proxy pool: health checks, round-robin/ │── TCP ──▶ upstreams
-                 │ least-conn, per-try failover, X-Forwarded-For      │
-                 └────────────────────────────────────────────────────┘
-```
+![PulseHTTP architecture: one HTTP/1.1 engine serving directly or fronting a health-checked upstream pool](docs/img/architecture.svg)
 
 - **`httpcore`** — request parser with a limit on every dimension (line, header count,
   header bytes, body bytes) and chunked + `Content-Length` framing; buffered response

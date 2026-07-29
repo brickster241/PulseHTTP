@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 470" font-family="Menlo, Consolas, monospace" font-size="12">
+  <defs>
+    <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7a869a"/>
+    </marker>
+  </defs>
+  <rect width="860" height="470" fill="#0d1117"/>
+  <text x="24" y="32" fill="#e6edf3" font-size="16" font-weight="bold">PulseHTTP — one engine, two modes, no net/http on the serving path</text>
+
+  <!-- client -->
+  <rect x="24" y="70" width="110" height="44" rx="8" fill="#1c2333" stroke="#3d4b66"/>
+  <text x="79" y="89" fill="#79c0ff" text-anchor="middle" font-weight="bold">client</text>
+  <text x="79" y="105" fill="#8b949e" text-anchor="middle" font-size="10">TCP / TLS</text>
+
+  <!-- httpcore -->
+  <rect x="170" y="58" width="180" height="120" rx="8" fill="#161b22" stroke="#e3b341"/>
+  <text x="260" y="80" fill="#e3b341" text-anchor="middle" font-weight="bold">httpcore</text>
+  <text x="184" y="100" fill="#c9d1d9" font-size="10">accept → bounded parse</text>
+  <text x="184" y="115" fill="#c9d1d9" font-size="10">400/408/413/414/431/501/505</text>
+  <text x="184" y="130" fill="#c9d1d9" font-size="10">keep-alive · HEAD · chunked</text>
+  <text x="184" y="145" fill="#c9d1d9" font-size="10">graceful drain · panic→500</text>
+  <text x="184" y="163" fill="#79c0ff" font-size="10">httpcore/server.go</text>
+  <line x1="134" y1="92" x2="168" y2="92" stroke="#e3b341" stroke-width="1.8" marker-end="url(#pa)"/>
+
+  <!-- middleware chain -->
+  <rect x="386" y="58" width="200" height="200" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="486" y="80" fill="#e6edf3" text-anchor="middle" font-weight="bold">middleware chain</text>
+  <text x="400" y="100" fill="#c9d1d9" font-size="10">metrics → logs → request-id</text>
+  <text x="400" y="115" fill="#c9d1d9" font-size="10">→ recover</text>
+  <text x="400" y="133" fill="#f0883e" font-size="10">→ rate limit (429 + Retry-After)</text>
+  <text x="400" y="151" fill="#f0883e" font-size="10">→ auth (401 vs 403)</text>
+  <text x="400" y="169" fill="#3fb950" font-size="10">→ cache (LRU + ETag → 304,</text>
+  <text x="412" y="183" fill="#3fb950" font-size="10">Cache-Control honored)</text>
+  <text x="400" y="203" fill="#79c0ff" font-size="10">middleware/ · cache/</text>
+  <text x="400" y="221" fill="#8b949e" font-size="10">buffered responses = every</text>
+  <text x="400" y="235" fill="#8b949e" font-size="10">layer sees complete exchanges</text>
+  <line x1="350" y1="118" x2="384" y2="118" stroke="#e3b341" stroke-width="1.8" marker-end="url(#pa)"/>
+
+  <!-- router -->
+  <rect x="622" y="58" width="214" height="88" rx="8" fill="#1e2b22" stroke="#3fb950"/>
+  <text x="729" y="80" fill="#3fb950" text-anchor="middle" font-weight="bold">router → handlers</text>
+  <text x="636" y="100" fill="#c9d1d9" font-size="10">:params · 404 vs 405 + Allow</text>
+  <text x="636" y="115" fill="#c9d1d9" font-size="10">HEAD falls back to GET</text>
+  <text x="636" y="133" fill="#79c0ff" font-size="10">router/router.go</text>
+  <line x1="586" y1="102" x2="620" y2="102" stroke="#e3b341" stroke-width="1.8" marker-end="url(#pa)"/>
+
+  <!-- metrics side -->
+  <rect x="622" y="170" width="214" height="60" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="729" y="192" fill="#e6edf3" text-anchor="middle" font-weight="bold">/metrics</text>
+  <text x="636" y="210" fill="#8b949e" font-size="10">status counters · p50/p90/p99</text>
+  <line x1="586" y1="200" x2="620" y2="200" stroke="#7a869a" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#pa)"/>
+
+  <!-- proxy mode strip -->
+  <rect x="24" y="290" width="812" height="1" fill="#30363d"/>
+  <text x="24" y="316" fill="#e6edf3" font-weight="bold" font-size="13">proxy mode — the same httpcore fronting an upstream pool</text>
+
+  <rect x="170" y="336" width="220" height="104" rx="8" fill="#161b22" stroke="#bc8cff"/>
+  <text x="280" y="358" fill="#bc8cff" text-anchor="middle" font-weight="bold">proxy pool</text>
+  <text x="184" y="378" fill="#c9d1d9" font-size="10">TCP health checks + passive fail</text>
+  <text x="184" y="393" fill="#c9d1d9" font-size="10">round-robin / least-connections</text>
+  <text x="184" y="408" fill="#c9d1d9" font-size="10">keep-alive pool + stale retry</text>
+  <text x="184" y="426" fill="#79c0ff" font-size="10">proxy/proxy.go</text>
+
+  <rect x="470" y="330" width="140" height="34" rx="8" fill="#1c2333" stroke="#3d4b66"/>
+  <text x="540" y="352" fill="#79c0ff" text-anchor="middle" font-size="11">upstream :8081</text>
+  <rect x="470" y="374" width="140" height="34" rx="8" fill="#1c2333" stroke="#3d4b66"/>
+  <text x="540" y="396" fill="#79c0ff" text-anchor="middle" font-size="11">upstream :8082</text>
+  <rect x="470" y="418" width="140" height="34" rx="8" fill="#2e1c1c" stroke="#f85149"/>
+  <text x="540" y="440" fill="#f85149" text-anchor="middle" font-size="11">upstream ✗ (down)</text>
+
+  <line x1="390" y1="360" x2="468" y2="347" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#pa)"/>
+  <line x1="390" y1="386" x2="468" y2="391" stroke="#bc8cff" stroke-width="1.5" marker-end="url(#pa)"/>
+  <line x1="390" y1="412" x2="468" y2="435" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#pa)"/>
+
+  <text x="630" y="352" fill="#8b949e" font-size="10">pooled conns reused (2.7× throughput)</text>
+  <text x="630" y="396" fill="#8b949e" font-size="10">all attempts failed → 502</text>
+  <text x="630" y="440" fill="#8b949e" font-size="10">nobody healthy → 503 + Retry-After</text>
+
+  <line x1="79" y1="114" x2="79" y2="388" stroke="#3d4b66" stroke-width="1"/>
+  <line x1="79" y1="388" x2="168" y2="388" stroke="#3d4b66" stroke-width="1.5" marker-end="url(#pa)"/>
+</svg>
