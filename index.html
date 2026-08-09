@@ -10,8 +10,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --paper:#fbf6ec; --gridline:#f0dcd2; --gridbold:#e7c3b2;
-    --ink:#232120; --soft:#6d6659; --plot:#1f4fc2; --sig:#c0392b; --pass:#2e7d4f; --warn:#b3700c;
+    --paper:#0b0e14; --gridline:#121826; --gridbold:#1d2635;
+    --ink:#e6edf3; --soft:#8b98a9; --plot:#59b7ff; --sig:#ff6b60; --pass:#4ade80; --warn:#ffb454;
     --mono:'Courier Prime','Courier New',Courier,monospace;
   }
   * { box-sizing:border-box; margin:0; }
@@ -23,7 +23,7 @@
     background-size:110px 110px,110px 110px,22px 22px,22px 22px;
     color:var(--ink); font-family:var(--mono); min-height:100vh; padding:30px clamp(14px,3.5vw,52px) 60px;
   }
-  header { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 22px; border-bottom:2.5px solid var(--ink); padding-bottom:10px; }
+  header { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 22px; border-bottom:2px solid var(--gridbold); padding-bottom:10px; }
   header h1 { font-size:clamp(24px,3.6vw,34px); font-weight:700; letter-spacing:.02em; }
   header h1 b { color:var(--plot); }
   .placard { font-size:11px; letter-spacing:.12em; color:var(--soft); text-transform:uppercase; }
@@ -34,7 +34,7 @@
   main { display:grid; grid-template-columns:250px 1fr; gap:26px; margin-top:22px; }
   @media (max-width:900px){ main { grid-template-columns:1fr; } }
   .panel { min-width:0; }
-  .panel h2 { font-size:11px; letter-spacing:.16em; color:var(--ink); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; border-bottom:1px solid var(--ink); padding-bottom:5px; }
+  .panel h2 { font-size:11px; letter-spacing:.16em; color:var(--warn); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; border-bottom:1px solid var(--gridbold); padding-bottom:5px; }
   .panel h2 .stat { margin-left:auto; letter-spacing:0; color:var(--soft); text-transform:none; font-weight:400; }
 
   .ctl { margin-bottom:13px; }
@@ -43,36 +43,36 @@
   input[type=range] { width:100%; accent-color:var(--plot); background:transparent; }
   .btnrow { display:flex; gap:8px; }
   .btnrow button {
-    flex:1; background:var(--paper); color:var(--ink); border:1.5px solid var(--ink); border-radius:2px;
-    font:700 11px var(--mono); letter-spacing:.1em; padding:8px 0; cursor:pointer; box-shadow:2px 2px 0 var(--ink);
+    flex:1; background:#11151d; color:var(--soft); border:1px solid var(--gridbold); border-radius:4px;
+    font:700 11px var(--mono); letter-spacing:.1em; padding:8px 0; cursor:pointer;
   }
-  .btnrow button:hover { transform:translate(1px,1px); box-shadow:1px 1px 0 var(--ink); }
+  .btnrow button:hover { color:var(--warn); border-color:var(--warn); }
   .btnrow button.armed { background:var(--sig); color:var(--paper); border-color:var(--sig); box-shadow:2px 2px 0 var(--ink); }
 
   #deckWrap { position:relative; }
-  canvas { display:block; width:100%; border:1.5px solid var(--ink); background:transparent; }
+  canvas { display:block; width:100%; border:1.5px solid var(--gridbold); background:transparent; }
 
   #widgets { display:grid; grid-template-columns:190px 1fr 280px; gap:24px; margin-top:18px; }
   @media (max-width:900px){ #widgets { grid-template-columns:1fr; } }
   #bucketViz { display:flex; align-items:flex-end; gap:12px; height:110px; }
-  #bucketBar { width:40px; height:100%; border:1.5px solid var(--ink); position:relative; overflow:hidden; background:#fff; }
-  #bucketFill { position:absolute; left:0; right:0; bottom:0; background:repeating-linear-gradient(-45deg, var(--plot), var(--plot) 3px, transparent 3px, transparent 6px); transition:height .12s linear; }
+  #bucketBar { width:40px; height:100%; border:1px solid #33404a; border-radius:4px; position:relative; overflow:hidden; background:#0e1219; }
+  #bucketBar::after { content:''; position:absolute; right:0; top:0; bottom:0; width:7px; background:repeating-linear-gradient(to top, transparent, transparent calc(12.5% - 1px), #33404a calc(12.5% - 1px), #33404a 12.5%); }
+  #bucketFill { position:absolute; left:0; right:0; bottom:0; background:repeating-linear-gradient(-45deg, color-mix(in srgb, var(--plot) 62%, transparent), color-mix(in srgb, var(--plot) 62%, transparent) 3px, transparent 3px, transparent 6px); transition:height .12s linear; }
   #bucketMeta { font-size:11px; color:var(--soft); line-height:2; }
   #bucketMeta b { color:var(--ink); font-weight:700; }
 
   #lru { display:flex; gap:8px; flex-wrap:wrap; min-height:64px; align-content:flex-start; }
-  .slot { border:1.2px solid var(--ink); padding:6px 10px; font-size:10.5px; color:var(--ink); background:#fff; transition:transform .25s, opacity .25s, background .25s; box-shadow:2px 2px 0 rgba(35,33,32,.18); }
+  .slot { border:1px solid var(--gridbold); border-radius:4px; padding:6px 10px; font-size:10.5px; color:var(--soft); background:#11151d; transition:transform .25s, opacity .25s, border-color .25s; }
   .slot .etag { color:var(--soft); font-size:9px; }
-  .slot.hit { background:#e4ecfb; border-color:var(--plot); }
-  .slot.fresh { background:#e8f2ea; border-color:var(--pass); }
+  .slot.hit { border-color:var(--plot); color:var(--ink); }
+  .slot.fresh { border-color:var(--pass); }
   .slot.evict { opacity:0; transform:translateY(14px); }
 
   #tallies { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .tally { border:1.5px solid currentColor; border-radius:3px; padding:6px 8px; background:transparent; transform:rotate(-1.2deg); }
-  .tally:nth-child(2n) { transform:rotate(.9deg); }
+  .tally { border:1px solid var(--gridbold); border-radius:3px; padding:6px 8px; background:transparent; }
   .tally .k { font-size:9px; letter-spacing:.12em; font-weight:700; }
   .tally .v { font-size:22px; font-weight:700; }
-  footer { margin-top:30px; border-top:2.5px solid var(--ink); padding-top:10px; font-size:10.5px; color:var(--soft); letter-spacing:.06em; text-align:center; line-height:1.9; }
+  footer { margin-top:30px; border-top:2px solid var(--gridbold); padding-top:10px; font-size:10.5px; color:var(--soft); letter-spacing:.06em; text-align:center; line-height:1.9; }
   footer a { color:var(--plot); }
 </style>
 </head>
@@ -176,7 +176,7 @@ const STAGES = [
   { id: 'cache', label: 'CACHE', sub: 'LRU + ETag' },
   { id: 'origin', label: 'ORIGIN', sub: 'handler' },
 ]
-const LANE_F = 150, LANE_R = 96, DROP_Y = 250
+const LANE_F = 168, LANE_R = 58, DROP_Y = 268
 
 // ---------- request lifecycle ----------
 let urlSeq = 100
@@ -289,7 +289,7 @@ function step(dt, now) {
   for (const r of reqs) {
     if (r.status && r.phase === 'drop') { r.dropT += dt; continue }
     if (r.phase === 'origin-wait') {
-      if (now >= r.waitUntil) { r.status = completeOrigin(r); r.phase = 'ret' }
+      if (now >= r.waitUntil) { r.status = completeOrigin(r); count(r.status); r.phase = 'ret' }
       continue
     }
     if (r.phase === 'fwd') {
@@ -300,8 +300,9 @@ function step(dt, now) {
         const verdict = decide(r, STAGES[r.stage].id)
         if (verdict === 'origin-work') { r.phase = 'origin-wait' }
         else if (verdict) {
-          if (verdict === '304' || verdict === '200 cache') { r.status = verdict; r.phase = 'ret' }
-          else { r.status = verdict; r.phase = 'drop' }
+          r.status = verdict
+          count(verdict)
+          r.phase = verdict === '304' || verdict === '200 cache' ? 'ret' : 'drop'
         }
       }
     } else if (r.phase === 'ret') {
@@ -318,15 +319,19 @@ function step(dt, now) {
   }
 }
 
-function finish(r) {
-  tallies[r.status] = (tallies[r.status] ?? 0) + 1
-  reqs.splice(reqs.indexOf(r), 1)
+function count(status) {
+  tallies[status] = (tallies[status] ?? 0) + 1
   renderTallies()
+}
+function finish(r) {
+  reqs.splice(reqs.indexOf(r), 1)
 }
 
 function draw(now) {
   ctx.clearRect(0, 0, W, 360)
   drawStages()
+  const stamps = []
+  let originQueue = 0
   for (const r of reqs) {
     let x = r.x, y = r.y, alpha = 1
     if (r.phase === 'drop') {
@@ -334,18 +339,30 @@ function draw(now) {
       y = LANE_F + (DROP_Y - LANE_F) * Math.min(r.dropT / 0.5, 1)
       alpha = Math.max(0, 1 - Math.max(0, r.dropT - 0.55) / 0.6)
     }
-    if (r.phase === 'origin-wait') { x = stageX.at(-1) }
+    if (r.phase === 'origin-wait') { x = stageX.at(-1) - originQueue++ * 11 }
     const color = r.status ? (TALLYCOLOR[r.status] ?? COLORS.dim) : COLORS.plotink
     ctx.globalAlpha = alpha
     ctx.fillStyle = color
     ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill()
-    // status label while dropping / returning
-    if (r.status) {
-      ctx.font = '9.5px ' + getComputedStyle(document.body).fontFamily
-      ctx.textAlign = 'center'
-      ctx.fillText(r.status.split(' ')[0], x, y - 9)
+    // Collect stamp candidates; printing happens in one placed pass below,
+    // because clearance against a moving, unsorted set cannot be enforced
+    // dot-by-dot.
+    const docked = (r.phase === 'ret' && y === LANE_R) || r.phase === 'drop'
+    if (r.status && docked) {
+      stamps.push({ x, y: y + (r.phase === 'ret' ? 16 : -9), text: r.status.split(' ')[0], color })
     }
     ctx.globalAlpha = 1
+  }
+  // The placed pass: sort by x, print only stamps with 46px clearance.
+  stamps.sort((a, b) => a.x - b.x)
+  ctx.font = '9.5px ' + getComputedStyle(document.body).fontFamily
+  ctx.textAlign = 'center'
+  let lastX = -1e9
+  for (const st of stamps) {
+    if (st.x - lastX < 46) continue
+    lastX = st.x
+    ctx.fillStyle = st.color
+    ctx.fillText(st.text, st.x, st.y)
   }
   // bucket widget
   $('bucketFill').style.height = (100 * tokens / cfg.cap) + '%'
@@ -356,8 +373,9 @@ function draw(now) {
 
 // ---------- widgets ----------
 function renderTallies() {
+  // a zero is not news — only live counts get their status color
   $('tallies').innerHTML = Object.entries(tallies).map(([k, v]) =>
-    `<div class="tally"><div class="k">${k.toUpperCase()}</div><div class="v" style="color:${TALLYCOLOR[k]}">${v}</div></div>`).join('')
+    `<div class="tally" style="color:${v ? TALLYCOLOR[k] : 'var(--soft)'}"><div class="k">${k.toUpperCase()}</div><div class="v" style="color:${v ? TALLYCOLOR[k] : 'var(--soft)'}">${v}</div></div>`).join('')
 }
 function renderLRU(freshCls, freshUrl) {
   $('lru').innerHTML = cache.map((c) =>
