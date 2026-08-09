@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PulseHTTP · Request Deck</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%23ffb454' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ffb454'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg:#0b0f14; --panel:#11151d; --panel2:#161c26; --line:#232b38; --grid:#121826;
+    --ink:#e6edf3; --dim:#8b98a9; --faint:#5b6675;
+    --amber:#ffb454; --hud:#7dd3fc; --ok:#4ade80; --err:#f87171; --purple:#c4b5fd;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
+    --sans:-apple-system,'Segoe UI',system-ui,Helvetica,Arial,sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body {
+    background:var(--bg);
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:28px 28px;
+    color:var(--ink); font-family:var(--mono); min-height:100vh; padding:20px clamp(12px,3vw,36px) 50px;
+  }
+  header { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px 20px; border-bottom:1.5px solid var(--line); padding-bottom:14px; }
+  header h1 { font-family:var(--sans); font-size:22px; font-weight:800; }
+  header h1 b { color:var(--amber); }
+  .placard { font-size:10px; letter-spacing:2.5px; color:var(--faint); text-transform:uppercase; }
+  header .right { margin-left:auto; font-size:11px; }
+  header a { color:var(--hud); text-decoration:none; }
+  header a:hover { text-decoration:underline; }
+
+  main { display:grid; grid-template-columns:250px 1fr; gap:14px; margin-top:16px; }
+  @media (max-width:900px){ main { grid-template-columns:1fr; } }
+  .panel { background:color-mix(in srgb,var(--panel) 90%,transparent); border:1.5px solid var(--line); border-radius:12px; padding:14px; min-width:0; }
+  .panel h2 { font-size:10px; letter-spacing:2.5px; color:var(--faint); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; }
+  .panel h2 .stat { margin-left:auto; letter-spacing:0; color:var(--dim); text-transform:none; }
+
+  .ctl { margin-bottom:14px; }
+  .ctl label { display:flex; justify-content:space-between; font-size:10.5px; color:var(--dim); letter-spacing:1px; margin-bottom:4px; }
+  .ctl label b { color:var(--ink); font-weight:400; }
+  input[type=range] { width:100%; accent-color:var(--amber); background:transparent; }
+  .btnrow { display:flex; gap:6px; }
+  .btnrow button {
+    flex:1; background:var(--panel2); color:var(--dim); border:1px solid var(--line); border-radius:6px;
+    font:11px var(--mono); letter-spacing:1.5px; padding:8px 0; cursor:pointer;
+  }
+  .btnrow button:hover { color:var(--ink); border-color:var(--amber); }
+  .btnrow button.armed { color:var(--amber); border-color:var(--amber); }
+
+  #deckWrap { position:relative; }
+  canvas { display:block; width:100%; border:1.5px solid var(--line); border-radius:12px; background:color-mix(in srgb,var(--panel) 70%,transparent); }
+
+  #widgets { display:grid; grid-template-columns:190px 1fr 260px; gap:14px; margin-top:14px; }
+  @media (max-width:900px){ #widgets { grid-template-columns:1fr; } }
+  #bucketViz { display:flex; align-items:flex-end; gap:10px; height:110px; }
+  #bucketBar { width:44px; height:100%; border:1.5px solid var(--line); border-radius:8px; position:relative; overflow:hidden; background:var(--bg); }
+  #bucketFill { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top, var(--amber), color-mix(in srgb,var(--amber) 55%,transparent)); transition:height .12s linear; }
+  #bucketMeta { font-size:10.5px; color:var(--dim); line-height:1.9; }
+  #bucketMeta b { color:var(--ink); }
+
+  #lru { display:flex; gap:7px; flex-wrap:wrap; min-height:64px; align-content:flex-start; }
+  .slot {
+    border:1px solid var(--line); border-radius:7px; padding:6px 9px; font-size:10.5px; color:var(--dim);
+    background:var(--bg); transition:transform .25s, opacity .25s, border-color .25s; position:relative;
+  }
+  .slot .etag { color:var(--faint); font-size:9px; }
+  .slot.hit { border-color:var(--hud); color:var(--ink); }
+  .slot.fresh { border-color:var(--ok); }
+  .slot.evict { opacity:0; transform:translateY(14px) scale(.9); }
+
+  #tallies { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .tally { border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--bg); }
+  .tally .k { font-size:9.5px; letter-spacing:1.5px; color:var(--faint); }
+  .tally .v { font-family:var(--sans); font-size:21px; font-weight:800; }
+  footer { margin-top:26px; border-top:1px solid var(--line); padding-top:12px; font-size:10.5px; color:var(--faint); letter-spacing:1px; text-align:center; line-height:1.9; }
+  footer a { color:var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>PULSEHTTP <b>REQUEST DECK</b></h1>
+  <span class="placard">the pipeline at human speed — the real one does 179K of these per second</span>
+  <span class="right"><a href="https://github.com/brickster241/PulseHTTP" target="_blank" rel="noreferrer">source ↗</a></span>
+</header>
+
+<main>
+  <aside class="panel">
+    <h2>Traffic controls</h2>
+    <div class="ctl"><label>REQUESTS / SEC <b id="vRate">3</b></label>
+      <input type="range" id="rate" min="0" max="14" step="0.5" value="3"></div>
+    <div class="ctl"><label>AUTHENTICATED <b id="vAuth">60%</b></label>
+      <input type="range" id="auth" min="0" max="100" step="5" value="60"></div>
+    <div class="ctl"><label>REPEAT URLS <b id="vRepeat">70%</b></label>
+      <input type="range" id="repeat" min="0" max="100" step="5" value="70"></div>
+    <div class="ctl"><label>BUCKET CAPACITY <b id="vCap">8</b></label>
+      <input type="range" id="cap" min="1" max="20" step="1" value="8"></div>
+    <div class="ctl"><label>REFILL / SEC <b id="vRefill">2</b></label>
+      <input type="range" id="refill" min="0" max="10" step="0.5" value="2"></div>
+    <div class="ctl"><label>CACHE SLOTS <b id="vSlots">4</b></label>
+      <input type="range" id="slots" min="1" max="8" step="1" value="4"></div>
+    <div class="btnrow">
+      <button id="burst">BURST +16</button>
+      <button id="pause">PAUSE</button>
+    </div>
+    <p style="font-size:10px;color:var(--faint);margin-top:14px;line-height:1.7">
+      Drag the rate above the refill rate and watch the bucket starve — that is a
+      <span style="color:var(--amber)">429</span> storm, and why
+      <code>Retry-After</code> exists.</p>
+  </aside>
+
+  <section class="panel">
+    <h2>Request pipeline <span class="stat" id="inflight"></span></h2>
+    <div id="deckWrap"><canvas id="deck" height="360"></canvas></div>
+
+    <div id="widgets">
+      <div>
+        <h2 style="margin-bottom:8px">Token bucket</h2>
+        <div id="bucketViz">
+          <div id="bucketBar"><div id="bucketFill"></div></div>
+          <div id="bucketMeta">tokens <b id="tokNow">8.0</b> / <b id="tokCap">8</b><br>
+            refill <b id="tokRefill">2.0</b>/s<br>
+            starved <b id="tokStarve">0</b>×</div>
+        </div>
+      </div>
+      <div>
+        <h2 style="margin-bottom:8px">LRU cache <span class="stat">most recent first · full ⇒ evict last</span></h2>
+        <div id="lru"></div>
+      </div>
+      <div>
+        <h2 style="margin-bottom:8px">Outcomes</h2>
+        <div id="tallies"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  A FAITHFUL ANATOMY OF <a href="https://github.com/brickster241/PulseHTTP" target="_blank" rel="noreferrer">PULSEHTTP</a>'S REQUEST PATH —
+  ROUTER → BEARER AUTH (401 ≠ 403) → TOKEN BUCKET (429 + RETRY-AFTER) → LRU+ETAG CACHE (304) → ORIGIN ·
+  THE PRODUCTION STACK IS MEASURED, NOT SIMULATED: 179K REQ/S @ P99 2.2 MS BY ITS OWN HARNESS
+</footer>
+
+<script type="module">
+const $ = (id) => document.getElementById(id)
+const CSSV = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+const COLORS = {
+  ink: CSSV('--ink'), dim: CSSV('--dim'), faint: CSSV('--faint'), line: CSSV('--line'),
+  amber: CSSV('--amber'), hud: CSSV('--hud'), ok: CSSV('--ok'), err: CSSV('--err'), purple: CSSV('--purple'),
+}
+
+// ---------- model ----------
+// Paths mirror the real server's route table and role rules.
+const PATHS = [
+  { p: '/api/users/42', need: null },
+  { p: '/api/echo', need: null },
+  { p: '/api/private/profile', need: 'user' },
+  { p: '/admin/metrics', need: 'admin' },
+]
+const cfg = { rate: 3, auth: 0.6, repeat: 0.7, cap: 8, refill: 2, slots: 4 }
+let tokens = cfg.cap
+let paused = false
+let starved = 0
+const tallies = { '200 origin': 0, '200 cache': 0, '304': 0, '401': 0, '403': 0, '429': 0 }
+const TALLYCOLOR = { '200 origin': COLORS.ok, '200 cache': COLORS.hud, '304': COLORS.hud, '401': COLORS.err, '403': COLORS.err, '429': COLORS.amber }
+const cache = []   // [{url, etag}] front = most recent
+const reqs = []    // in-flight animated requests
+
+// ---------- stages ----------
+const STAGES = [
+  { id: 'client', label: 'CLIENT' },
+  { id: 'router', label: 'ROUTER' },
+  { id: 'auth', label: 'AUTH', sub: 'bearer' },
+  { id: 'bucket', label: 'LIMITER', sub: 'token bucket' },
+  { id: 'cache', label: 'CACHE', sub: 'LRU + ETag' },
+  { id: 'origin', label: 'ORIGIN', sub: 'handler' },
+]
+const LANE_F = 150, LANE_R = 96, DROP_Y = 250
+
+// ---------- request lifecycle ----------
+let urlSeq = 100
+function spawn() {
+  const authed = Math.random() < cfg.auth
+  const role = authed ? (Math.random() < 0.8 ? 'user' : 'admin') : null
+  const route = PATHS[Math.floor(Math.random() * PATHS.length)]
+  // repeat-url knob: repeats draw from a tiny hot set → cache hits become possible
+  const hot = Math.random() < cfg.repeat
+  const url = hot ? route.p : route.p + '?v=' + urlSeq++
+  // a client that has seen this URL before may hold its ETag → 304 candidate
+  const hasEtag = hot && Math.random() < 0.5
+  reqs.push({
+    url, need: route.need, role, hasEtag,
+    stage: 0, x: 0, y: LANE_F, phase: 'fwd', status: null, born: performance.now(),
+    dropT: 0, waitUntil: 0,
+  })
+}
+
+function decide(r, stageId) {
+  if (stageId === 'auth') {
+    if (r.need && !r.role) return '401'            // no credentials → authenticate first
+    if (r.need === 'admin' && r.role !== 'admin') return '403'  // authenticated, still denied
+    return null
+  }
+  if (stageId === 'bucket') {
+    if (tokens >= 1) { tokens -= 1; return null }
+    starved++; return '429'
+  }
+  if (stageId === 'cache') {
+    const i = cache.findIndex((c) => c.url === r.url)
+    if (i >= 0) {
+      const entry = cache.splice(i, 1)[0]
+      cache.unshift(entry)                          // LRU touch
+      flashSlot(entry.url, 'hit')
+      return r.hasEtag ? '304' : '200 cache'
+    }
+    return null                                     // miss → origin
+  }
+  if (stageId === 'origin') {
+    r.waitUntil = performance.now() + 260           // origin work, visible
+    return 'origin-work'
+  }
+  return null
+}
+
+function completeOrigin(r) {
+  // response enters the cache; evict LRU tail if full
+  if (!cache.some((c) => c.url === r.url)) {
+    cache.unshift({ url: r.url, etag: 'W/"' + Math.random().toString(16).slice(2, 8) + '"' })
+    if (cache.length > cfg.slots) {
+      const ev = cache.pop()
+      evictSlot(ev.url)
+    }
+    renderLRU('fresh', r.url)
+  }
+  return '200 origin'
+}
+
+// ---------- canvas ----------
+const canvas = $('deck'), ctx = canvas.getContext('2d')
+let W = 0, stageX = []
+function resize() {
+  W = canvas.clientWidth
+  canvas.width = W * devicePixelRatio
+  canvas.height = 360 * devicePixelRatio
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+  const pad = 70
+  stageX = STAGES.map((_, i) => pad + (W - 2 * pad) * (i / (STAGES.length - 1)))
+}
+window.addEventListener('resize', resize)
+
+function drawStages() {
+  ctx.font = '10.5px ' + getComputedStyle(document.body).fontFamily
+  ctx.textAlign = 'center'
+  for (let i = 0; i < STAGES.length; i++) {
+    const x = stageX[i]
+    // gate
+    ctx.strokeStyle = COLORS.line
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.roundRect(x - 44, LANE_F - 64, 88, 40, 9)
+    ctx.stroke()
+    ctx.fillStyle = COLORS.ink
+    ctx.fillText(STAGES[i].label, x, LANE_F - 46)
+    if (STAGES[i].sub) { ctx.fillStyle = COLORS.faint; ctx.fillText(STAGES[i].sub, x, LANE_F - 34) }
+    // vertical guide through both lanes
+    ctx.strokeStyle = COLORS.line
+    ctx.setLineDash([2, 6])
+    ctx.beginPath(); ctx.moveTo(x, LANE_F - 22); ctx.lineTo(x, DROP_Y + 40); ctx.stroke()
+    ctx.setLineDash([])
+  }
+  // lanes
+  ctx.strokeStyle = COLORS.line
+  for (const y of [LANE_F, LANE_R]) {
+    ctx.beginPath(); ctx.moveTo(stageX[0], y); ctx.lineTo(stageX.at(-1), y); ctx.stroke()
+  }
+  ctx.fillStyle = COLORS.faint
+  ctx.textAlign = 'left'
+  ctx.fillText('→ request lane', stageX[0] - 44, LANE_F + 18)
+  ctx.fillText('← response lane', stageX[0] - 44, LANE_R - 10)
+  ctx.fillText('rejections drop here', stageX[0] - 44, DROP_Y + 34)
+}
+
+const SPEED = 190 // px/s
+function step(dt, now) {
+  // refill the bucket continuously
+  tokens = Math.min(cfg.cap, tokens + cfg.refill * dt)
+
+  for (const r of reqs) {
+    if (r.status && r.phase === 'drop') { r.dropT += dt; continue }
+    if (r.phase === 'origin-wait') {
+      if (now >= r.waitUntil) { r.status = completeOrigin(r); r.phase = 'ret' }
+      continue
+    }
+    if (r.phase === 'fwd') {
+      const tx = stageX[r.stage + 1]
+      r.x = Math.min(r.x + SPEED * dt, tx)
+      if (r.x >= tx) {
+        r.stage++
+        const verdict = decide(r, STAGES[r.stage].id)
+        if (verdict === 'origin-work') { r.phase = 'origin-wait' }
+        else if (verdict) {
+          if (verdict === '304' || verdict === '200 cache') { r.status = verdict; r.phase = 'ret' }
+          else { r.status = verdict; r.phase = 'drop' }
+        }
+      }
+    } else if (r.phase === 'ret') {
+      if (r.y > LANE_R) { r.y = Math.max(LANE_R, r.y - SPEED * 1.4 * dt) }
+      else {
+        r.x -= SPEED * 1.3 * dt
+        if (r.x <= stageX[0]) { finish(r) }
+      }
+    }
+  }
+  // drops: fall + fade, then account
+  for (const r of reqs) {
+    if (r.phase === 'drop' && r.dropT > 1.15) finish(r)
+  }
+}
+
+function finish(r) {
+  tallies[r.status] = (tallies[r.status] ?? 0) + 1
+  reqs.splice(reqs.indexOf(r), 1)
+  renderTallies()
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, W, 360)
+  drawStages()
+  for (const r of reqs) {
+    let x = r.x, y = r.y, alpha = 1
+    if (r.phase === 'drop') {
+      x = stageX[r.stage]
+      y = LANE_F + (DROP_Y - LANE_F) * Math.min(r.dropT / 0.5, 1)
+      alpha = Math.max(0, 1 - Math.max(0, r.dropT - 0.55) / 0.6)
+    }
+    if (r.phase === 'origin-wait') { x = stageX.at(-1) }
+    const color = r.status ? (TALLYCOLOR[r.status] ?? COLORS.dim) : COLORS.ink
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = color
+    ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill()
+    // status label while dropping / returning
+    if (r.status) {
+      ctx.font = '9.5px ' + getComputedStyle(document.body).fontFamily
+      ctx.textAlign = 'center'
+      ctx.fillText(r.status.split(' ')[0], x, y - 9)
+    }
+    ctx.globalAlpha = 1
+  }
+  // bucket widget
+  $('bucketFill').style.height = (100 * tokens / cfg.cap) + '%'
+  $('tokNow').textContent = tokens.toFixed(1)
+  $('tokStarve').textContent = starved
+  $('inflight').textContent = `${reqs.length} in flight`
+}
+
+// ---------- widgets ----------
+function renderTallies() {
+  $('tallies').innerHTML = Object.entries(tallies).map(([k, v]) =>
+    `<div class="tally"><div class="k">${k.toUpperCase()}</div><div class="v" style="color:${TALLYCOLOR[k]}">${v}</div></div>`).join('')
+}
+function renderLRU(freshCls, freshUrl) {
+  $('lru').innerHTML = cache.map((c) =>
+    `<div class="slot${freshCls && c.url === freshUrl ? ' ' + freshCls : ''}" data-url="${c.url}">${c.url}<br><span class="etag">${c.etag}</span></div>`).join('')
+    || '<span style="color:var(--faint);font-size:10.5px">empty — misses go to origin</span>'
+}
+function flashSlot(url, cls) {
+  renderLRU()
+  const el = [...document.querySelectorAll('.slot')].find((s) => s.dataset.url === url)
+  el?.classList.add(cls)
+  setTimeout(() => el?.classList.remove(cls), 450)
+}
+function evictSlot(url) { /* the DOM re-render after pop is the eviction; kept for clarity */ }
+
+// ---------- controls ----------
+const bind = (id, key, fmt = (v) => v) => {
+  $(id).addEventListener('input', () => {
+    const v = parseFloat($(id).value)
+    cfg[key] = key === 'auth' || key === 'repeat' ? v / 100 : v
+    $('v' + id[0].toUpperCase() + id.slice(1)).textContent = fmt(v)
+    if (key === 'cap') { $('tokCap').textContent = v; tokens = Math.min(tokens, v) }
+    if (key === 'refill') $('tokRefill').textContent = v.toFixed(1)
+    if (key === 'slots') { while (cache.length > v) cache.pop(); renderLRU() }
+  })
+}
+bind('rate', 'rate')
+bind('auth', 'auth', (v) => v + '%')
+bind('repeat', 'repeat', (v) => v + '%')
+bind('cap', 'cap')
+bind('refill', 'refill')
+bind('slots', 'slots')
+$('burst').onclick = () => { for (let i = 0; i < 16; i++) setTimeout(spawn, i * 45) }
+$('pause').onclick = () => { paused = !paused; $('pause').textContent = paused ? 'RESUME' : 'PAUSE'; $('pause').classList.toggle('armed', paused) }
+
+// ---------- loop ----------
+let last = performance.now(), acc = 0
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.05)
+  last = now
+  if (!paused) {
+    acc += dt * cfg.rate
+    while (acc >= 1) { spawn(); acc -= 1 }
+    step(dt, now)
+  }
+  draw(now)
+  requestAnimationFrame(loop)
+}
+resize()
+renderTallies()
+renderLRU()
+requestAnimationFrame(loop)
+</script>
+</body>
+</html>
