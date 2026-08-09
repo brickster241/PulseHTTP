@@ -9,6 +9,12 @@ A production-shaped HTTP/1.1 stack built **from raw TCP** in Go — zero depende
 - **`pulsebench`** — its load-testing harness: raw-TCP keep-alive workers, exact
   latency percentiles, status-code accounting.
 
+**[▶ Request Deck — live playground](https://brickster241.github.io/PulseHTTP/)** — the
+pipeline at human speed: watch requests flow through router → auth (401 ≠ 403) → token
+bucket (429) → LRU+ETag cache (304) → origin, and starve the bucket yourself.
+
+![Requests flowing through the pipeline; rejections drop, the token bucket drains and refills, the LRU evicts](assets/playground.gif)
+
 The design goal is *diagnosability*: every failure mode a client can trigger maps to
 the precise status code the RFC assigns it, because `401 vs 403` and `404 vs 405` and
 `408 vs 429` are different sentences, not synonyms for "no".
