@@ -403,6 +403,9 @@ function loop(now) {
   draw(now)
   requestAnimationFrame(loop)
 }
+// ambient bursts: the bucket should be seen starving without anyone touching a thing
+setInterval(() => { if (!paused) for (let i = 0; i < 10; i++) setTimeout(spawn, i * 55) }, 11000)
+
 resize()
 renderTallies()
 renderLRU()
